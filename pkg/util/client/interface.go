@@ -24,7 +24,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 )
 
-// 统一的 Kubernetes 客户端接口.
 type KubeInterface interface {
 	GetNode(ctx context.Context, name string, opts metav1.GetOptions) (*corev1.Node, error)
 	ListPods(ctx context.Context, namespace string, opts metav1.ListOptions) (*corev1.PodList, error)

@@ -37,14 +37,12 @@ var (
 	Client     *K8sClient
 )
 
-// K8sClient 实现 KubeInterface 接口.
 type K8sClient struct {
 	client kubernetes.Interface
 }
 
 var _ KubeInterface = (*K8sClient)(nil)
 
-// GetK8sClient 创建真实的 Kubernetes 客户端（单例模式）.
 func GetK8sClient() *K8sClient {
 	var err error
 	ClientOnce.Do(func() {
@@ -56,7 +54,6 @@ func GetK8sClient() *K8sClient {
 	return Client
 }
 
-// createRealClient 初始化真实的 Kubernetes 客户端.
 func createRealClient() (*K8sClient, error) {
 	kubeConfigPath := os.Getenv("KUBECONFIG")
 	if kubeConfigPath == "" {
@@ -80,7 +77,6 @@ func createRealClient() (*K8sClient, error) {
 	return &K8sClient{client: clientset}, nil
 }
 
-// GetNode 获取单个 Node 信息.
 func (c *K8sClient) GetNode(ctx context.Context, name string, opts metav1.GetOptions) (*corev1.Node, error) {
 	klog.V(4).InfoS("Retrieving node", "node", name)
 	node, err := c.client.CoreV1().Nodes().Get(ctx, name, opts)
@@ -92,7 +88,6 @@ func (c *K8sClient) GetNode(ctx context.Context, name string, opts metav1.GetOpt
 	return node, nil
 }
 
-// GetPod 获取单个 Pod 信息.
 func (c *K8sClient) GetPod(ctx context.Context, namespace, name string, opts metav1.GetOptions) (*corev1.Pod, error) {
 	klog.V(4).InfoS("Retrieving pod", "namespace", namespace, "pod", name)
 	pod, err := c.client.CoreV1().Pods(namespace).Get(ctx, name, opts)
@@ -104,7 +99,6 @@ func (c *K8sClient) GetPod(ctx context.Context, namespace, name string, opts met
 	return pod, nil
 }
 
-// ListPods 获取 Pod 列表.
 func (c *K8sClient) ListPods(ctx context.Context, namespace string, opts metav1.ListOptions) (*corev1.PodList, error) {
 	klog.V(4).InfoS("Listing pods", "namespace", namespace, "options", opts)
 	pods, err := c.client.CoreV1().Pods(namespace).List(ctx, opts)
@@ -116,7 +110,6 @@ func (c *K8sClient) ListPods(ctx context.Context, namespace string, opts metav1.
 	return pods, nil
 }
 
-// PatchNode 修补 Node.
 func (c *K8sClient) PatchNode(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions) (*corev1.Node, error) {
 	klog.V(4).InfoS("Patching node", "node", name, "patchType", pt)
 	node, err := c.client.CoreV1().Nodes().Patch(ctx, name, pt, data, opts)
@@ -128,7 +121,6 @@ func (c *K8sClient) PatchNode(ctx context.Context, name string, pt types.PatchTy
 	return node, nil
 }
 
-// PatchPod 修补 Pod.
 func (c *K8sClient) PatchPod(ctx context.Context, namespace string, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions) (*corev1.Pod, error) {
 	klog.V(4).InfoS("Patching pod", "namespace", namespace, "pod", name, "patchType", pt)
 	pod, err := c.client.CoreV1().Pods(namespace).Patch(ctx, name, pt, data, opts)
@@ -140,7 +132,6 @@ func (c *K8sClient) PatchPod(ctx context.Context, namespace string, name string,
 	return pod, nil
 }
 
-// CreateNode 创建 Node.
 func (c *K8sClient) CreateNode(ctx context.Context, node *corev1.Node, opts metav1.CreateOptions) (*corev1.Node, error) {
 	klog.V(4).InfoS("Creating node", "node", node.Name)
 	createdNode, err := c.client.CoreV1().Nodes().Create(ctx, node, opts)
@@ -156,9 +147,9 @@ func (c *K8sClient) UpdateNode(ctx context.Context, node *corev1.Node, opts meta
 	klog.V(4).InfoS("Updating node", "node", node.Name)
 	updatedNode, err := c.client.CoreV1().Nodes().Update(ctx, node, opts)
 	if err != nil {
-		klog.ErrorS(err, "Failed to create node", "node", node.Name)
-		return nil, fmt.Errorf("failed to create node %s: %w", node.Name, err)
+		klog.ErrorS(err, "Failed to update node", "node", node.Name)
+		return nil, fmt.Errorf("failed to update node %s: %w", node.Name, err)
 	}
-	klog.V(4).InfoS("Successfully created node", "node", node.Name)
+	klog.V(4).InfoS("Successfully updated node", "node", node.Name)
 	return updatedNode, nil
 }

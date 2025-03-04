@@ -624,12 +624,6 @@ func Test_CheckHealth(t *testing.T) {
 }
 
 func Test_MarkAnnotationsToDelete(t *testing.T) {
-
-	// client.KubeClient = fake.NewSimpleClientset()
-	// client.KubeClient.CoreV1().Nodes().Create(context.TODO(), &corev1.Node{
-	// 	ObjectMeta: metav1.ObjectMeta{Name: "node-worker2"},
-	// }, metav1.CreateOptions{})
-
 	client.GetFactory().SetFake().GetClient().CreateNode(
 		context.TODO(),
 		&corev1.Node{
