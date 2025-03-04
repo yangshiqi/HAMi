@@ -18,9 +18,11 @@ package client
 
 import (
 	"sync"
+
+	"k8s.io/client-go/kubernetes/fake"
 )
 
-// 工厂类（单例模式）.
+// KubeClientFactory 工厂类（单例模式）.
 type KubeClientFactory struct {
 	client KubeInterface
 }
@@ -30,34 +32,37 @@ var (
 	factoryOnce sync.Once
 )
 
-// GetInstance 直接获取Kubernetes客户端实例.
-func GetInstance() KubeInterface {
+// NewInstance 直接获取Kubernetes客户端实例.
+func NewInstance() KubeInterface {
 	return GetFactory().GetClient()
 }
 
 // GetFactory 获取单例工厂对象.
 func GetFactory() *KubeClientFactory {
 	factoryOnce.Do(func() {
-		instance = &KubeClientFactory{
-			client: NewRealClient(), // 默认使用 RealClient
-		}
+		instance = &KubeClientFactory{}
+		instance.SetReal() // 默认使用真实客户端
 	})
 	return instance
 }
 
-// GetClient 获取当前 client.
+// GetClient 获取当前客户端.
 func (f *KubeClientFactory) GetClient() KubeInterface {
 	return f.client
 }
 
 // SetFake 将工厂客户端设置为FakeClient.
 func (f *KubeClientFactory) SetFake() *KubeClientFactory {
-	f.client = NewFakeClient()
+	f.client = &K8sClient{
+		client: fake.NewSimpleClientset(),
+	}
 	return f
 }
 
 // SetReal 将工厂客户端设置为RealClient.
 func (f *KubeClientFactory) SetReal() *KubeClientFactory {
-	f.client = NewRealClient()
+	f.client = &K8sClient{
+		client: GetK8sClient().client,
+	}
 	return f
 }
