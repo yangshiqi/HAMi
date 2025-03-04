@@ -41,12 +41,21 @@ func NewInstance() KubeInterface {
 func GetFactory() *KubeClientFactory {
 	factoryOnce.Do(func() {
 		instance = &KubeClientFactory{}
-		instance.SetReal() // Use the real client by default
+		instance.SetReal() // Use the real client by default.
 	})
 	return instance
 }
 
 func (f *KubeClientFactory) GetClient() KubeInterface {
+	if KubeClient == nil {
+		f.client = &K8sClient{
+			client: GetK8sClient().client,
+		}
+	} else {
+		f.client = &K8sClient{
+			client: KubeClient,
+		}
+	}
 	return f.client
 }
 
@@ -54,12 +63,22 @@ func (f *KubeClientFactory) SetFake() *KubeClientFactory {
 	f.client = &K8sClient{
 		client: fake.NewSimpleClientset(),
 	}
+	// For compatibility with other direct assignment call points, this line needs to be removed after replacement.
+	KubeClient = fake.NewSimpleClientset()
 	return f
 }
 
 func (f *KubeClientFactory) SetReal() *KubeClientFactory {
-	f.client = &K8sClient{
-		client: GetK8sClient().client,
+	// For compatibility with other direct assignment call points, this line needs to be removed after replacement.
+	if KubeClient == nil {
+		f.client = &K8sClient{
+			client: GetK8sClient().client,
+		}
+		KubeClient = GetK8sClient().client
+	} else {
+		f.client = &K8sClient{
+			client: KubeClient,
+		}
 	}
 	return f
 }
