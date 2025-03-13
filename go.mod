@@ -9,7 +9,7 @@ require (
 	github.com/NVIDIA/k8s-device-plugin v0.15.0
 	github.com/NVIDIA/nvidia-container-toolkit v1.15.0
 	github.com/container-orchestrated-devices/container-device-interface v0.5.4-0.20230111111500-5b3b5d81179a
-	github.com/fsnotify/fsnotify v1.7.0
+	github.com/fsnotify/fsnotify v1.8.0
 	github.com/google/uuid v1.6.0
 	github.com/julienschmidt/httprouter v1.3.0
 	github.com/onsi/ginkgo/v2 v2.17.1
