@@ -4,10 +4,10 @@ go 1.22.2
 
 require (
 	github.com/NVIDIA/go-gpuallocator v0.3.2
-	github.com/NVIDIA/go-nvlib v0.2.0
-	github.com/NVIDIA/go-nvml v0.12.0-3
+	github.com/NVIDIA/go-nvlib v0.6.1
+	github.com/NVIDIA/go-nvml v0.12.4-0
 	github.com/NVIDIA/k8s-device-plugin v0.15.0
-	github.com/NVIDIA/nvidia-container-toolkit v1.15.0
+	github.com/NVIDIA/nvidia-container-toolkit v1.16.2
 	github.com/fsnotify/fsnotify v1.7.0
 	github.com/google/uuid v1.6.0
 	github.com/julienschmidt/httprouter v1.3.0
@@ -19,7 +19,7 @@ require (
 	github.com/spf13/cobra v1.8.1
 	github.com/spf13/pflag v1.0.5
 	github.com/stretchr/testify v1.9.0
-	github.com/urfave/cli/v2 v2.27.1
+	github.com/urfave/cli/v2 v2.27.4
 	golang.org/x/net v0.35.0
 	golang.org/x/term v0.29.0
 	golang.org/x/tools v0.21.1-0.20240508182429-e35e4ccd0d2d
@@ -73,8 +73,8 @@ require (
 	github.com/prometheus/procfs v0.13.0 // indirect
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
 	github.com/syndtr/gocapability v0.0.0-20200815063812-42c35b437635 // indirect
-	github.com/xrash/smetrics v0.0.0-20201216005158-039620a65673 // indirect
-	golang.org/x/mod v0.17.0 // indirect
+	github.com/xrash/smetrics v0.0.0-20240521201337-686a1a2994c1 // indirect
+	golang.org/x/mod v0.20.0 // indirect
 	golang.org/x/oauth2 v0.17.0 // indirect
 	golang.org/x/sys v0.30.0 // indirect
 	golang.org/x/text v0.22.0 // indirect
