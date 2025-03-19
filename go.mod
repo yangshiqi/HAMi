@@ -8,7 +8,7 @@ require (
 	github.com/NVIDIA/go-nvml v0.12.0-3
 	github.com/NVIDIA/k8s-device-plugin v0.15.0
 	github.com/NVIDIA/nvidia-container-toolkit v1.15.0
-	github.com/fsnotify/fsnotify v1.7.0
+	github.com/fsnotify/fsnotify v1.8.0
 	github.com/google/uuid v1.6.0
 	github.com/julienschmidt/httprouter v1.3.0
 	github.com/onsi/ginkgo/v2 v2.17.1
