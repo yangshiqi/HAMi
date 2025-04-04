@@ -169,10 +169,10 @@ HAMi also supports customizing virtualization parameters through the following m
 
 HAMi supports configuring NPU resource allocation through predefined device templates. Each template includes the following:
 
-- Template name (name): Unique identifier for the template
-- Memory size (memory): Device memory allocated to the template (in MB)
-- AI core count (aiCore): Number of AI cores allocated to the template
-- AI CPU core count (aiCPU): Number of AI CPU cores allocated to the template (supported by some models)
+- Template name (name): Unique identifier for the template.
+- Memory size (memory): Device memory allocated to the template (in MB).
+- AI core count (aiCore): Number of AI cores allocated to the template.
+- AI CPU core count (aiCPU): Number of AI CPU cores allocated to the template (supported by some models).
 
 When a user requests a specific memory size, the system automatically aligns the requested memory to the nearest template size. For example, if a user requests 2000MB of memory, the system will select the smallest template with memory size greater than or equal to 2000MB.
 
@@ -235,8 +235,74 @@ These statistics can be used for resource scheduling decisions and performance o
 
 HAMi implements a node locking mechanism to prevent resource allocation conflicts. When a Pod requests Ascend NPU resources, the system locks the corresponding node to prevent other Pods from using the same device resources simultaneously.
 
+
+## Device UUID Selection
+
+You can specify which Ascend devices to use or exclude using Pod annotations:
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ascend-pod
+  annotations:
+    # Use specific Ascend devices (comma-separated list)
+    hami.io/use-Ascend910B-uuid: "device-uuid-1,device-uuid-2"
+    # Or exclude specific Ascend devices (comma-separated list)
+    hami.io/no-use-Ascend910B-uuid: "device-uuid-3,device-uuid-4"
+spec:
+  # ... rest of pod spec
+```
+
+> **NOTE:** The device UUID format depends on the device type, such as `Ascend910B`, `Ascend910B2`, `Ascend910B3`, `Ascend910B4`, etc. You can find the available device UUIDs in the node status.
+
+### Usage Example
+
+Here is a complete example demonstrating how to use the UUID selection feature:
+
+<details>
+  <summary>Custom Configuration</summary>
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ascend-pod
+  annotations:
+    hami.io/use-Ascend910B-uuid: "device-uuid-1,device-uuid-2"
+spec:
+  containers:
+    - name: ubuntu-container
+      image: ascendhub.huawei.com/public-ascendhub/ascend-mindspore:23.0.RC3-centos7
+      command: ["bash", "-c", "sleep 86400"]
+      resources:
+        limits:
+          huawei.com/Ascend910B: 1
+          huawei.com/Ascend910B-memory: 2000
+```
+
+In this example, the Pod will only run on Ascend910B devices with UUIDs `device-uuid-1` or `device-uuid-2`.
+
+#### Finding Device UUIDs
+
+You can find the Ascend device UUIDs on a node using the following command:
+
+```bash
+kubectl describe node <node-name> | grep -A 10 "Allocated resources"
+```
+
+Or by viewing the node annotations:
+
+```bash
+kubectl get node <node-name> -o yaml | grep -A 10 "annotations:"
+```
+
+In the node annotations, look for `hami.io/node-register-Ascend910B` or similar annotations, which contain the device UUID information.
+
+</details>
+
 ## Notes
 
-- NPU sharing is not supported in init containers
-- `huawei.com/Ascend910-memory` is only effective when `huawei.com/Ascend910=1`
-- Multi-device requests (`huawei.com/Ascend910 > 1`) do not support vNPU mode
+- NPU sharing is not supported in init containers.
+- `huawei.com/Ascend910-memory` is only effective when `huawei.com/Ascend910=1`.
+- Multi-device requests (`huawei.com/Ascend910 > 1`) do not support vNPU mode.

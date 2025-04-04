@@ -169,10 +169,10 @@ HAMi 目前有一个 NPU 内置[虚拟化配置文件](https://github.com/Projec
 
 HAMi 支持通过预定义的设备模板来配置 NPU 资源分配。每个模板包含以下内容：
 
-- 模板名称（name）：模板的唯一标识符
-- 内存大小（memory）：分配给该模板的设备内存大小（单位：MB）
-- AI 核心数量（aiCore）：分配给该模板的 AI 核心数量
-- AI CPU 核心数量（aiCPU）：分配给该模板的 AI CPU 核心数量（部分型号支持）
+- 模板名称（name）：模板的唯一标识符；
+- 内存大小（memory）：分配给该模板的设备内存大小（单位：MB）；
+- AI 核心数量（aiCore）：分配给该模板的 AI 核心数量；
+- AI CPU 核心数量（aiCPU）：分配给该模板的 AI CPU 核心数量（部分型号支持）。
 
 当用户请求特定大小的内存时，系统会自动将请求的内存大小对齐到最接近的模板大小。例如，如果用户请求 2000MB 内存，系统会选择内存大小大于或等于 2000MB 的最小模板。
 
@@ -236,8 +236,76 @@ HAMi 支持对 Ascend NPU 设备的资源使用情况进行统计，包括：
 
 HAMi 实现了节点锁定机制，确保在分配设备资源时不会发生冲突。当 Pod 请求 Ascend NPU 资源时，系统会锁定相应的节点，防止其他 Pod 同时使用相同的设备资源。
 
+
+## 设备 UUID 选择
+
+你可以通过 Pod 注解来指定要使用或排除特定的 Ascend 设备：
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ascend-pod
+  annotations:
+    # 使用特定的 Ascend 设备（逗号分隔的列表）
+    hami.io/use-Ascend910B-uuid: "device-uuid-1,device-uuid-2"
+    # 或者排除特定的 Ascend 设备（逗号分隔的列表）
+    hami.io/no-use-Ascend910B-uuid: "device-uuid-3,device-uuid-4"
+spec:
+  # ... 其余 Pod 配置
+```
+
+> **注意**：设备 UUID 格式取决于设备类型，例如 `Ascend910B`、`Ascend910B2`、`Ascend910B3`、`Ascend910B4` 等。你可以在节点状态中找到可用的设备 UUID。
+
+
+
+### 使用示例
+
+以下是一个完整的示例，展示如何使用 UUID 选择功能：
+
+<details>
+  <summary>自定义配置</summary>
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ascend-pod
+  annotations:
+    hami.io/use-Ascend910B-uuid: "device-uuid-1,device-uuid-2"
+spec:
+  containers:
+    - name: ubuntu-container
+      image: ascendhub.huawei.com/public-ascendhub/ascend-mindspore:23.0.RC3-centos7
+      command: ["bash", "-c", "sleep 86400"]
+      resources:
+        limits:
+          huawei.com/Ascend910B: 1
+          huawei.com/Ascend910B-memory: 2000
+```
+
+在这个示例中，Pod 将只在 UUID 为 `device-uuid-1` 或 `device-uuid-2` 的 Ascend910B 设备上运行。
+
+#### 查找设备 UUID
+
+你可以通过以下命令查找节点上的 Ascend 设备 UUID：
+
+```bash
+kubectl describe node <node-name> | grep -A 10 "Allocated resources"
+```
+
+或者使用以下命令查看节点的注解：
+
+```bash
+kubectl get node <node-name> -o yaml | grep -A 10 "annotations:"
+```
+
+在节点注解中，查找 `hami.io/node-register-Ascend910B` 或类似的注解，其中包含设备 UUID 信息。
+
+</details>
+
 ## 注意事项
 
-- 在 init container 中无法使用 NPU 复用功能
-- `huawei.com/Ascend910-memory` 仅在 `huawei.com/Ascend910=1` 时有效
-- 多设备请求（`huawei.com/Ascend910 > 1`）不支持 vNPU 模式
+- 在 init container 中无法使用 NPU 复用功能；
+- `huawei.com/Ascend910-memory` 仅在 `huawei.com/Ascend910=1` 时有效；
+- 多设备请求（`huawei.com/Ascend910 > 1`）不支持 vNPU 模式。
