@@ -32,6 +32,12 @@ message shrregProcSlotT {
 	int32 pid = 1;
 	repeated uint64 used = 2;
 	int32 status = 3;
+	message deviceUtilization {
+		uint64 decUtil = 1;
+		uint64 encUtil = 2;
+		uint64 smUtil = 3;
+	}
+	repeated deviceUtilization deviceUtil = 4;
 }
 
 // The sharedRegionT struct is the main struct for monitoring vgpu

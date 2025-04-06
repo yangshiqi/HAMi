@@ -27,6 +27,7 @@ import (
 	"time"
 
 	"github.com/Project-HAMi/HAMi/pkg/monitor/nvidia"
+	v1 "github.com/Project-HAMi/HAMi/pkg/monitor/nvidia/v1"
 	"github.com/Project-HAMi/HAMi/pkg/util"
 	"github.com/Project-HAMi/HAMi/pkg/util/flag"
 
@@ -114,10 +115,12 @@ func initMetrics(ctx context.Context, containerLister *nvidia.ContainerLister) e
 	reg := prometheus.NewRegistry()
 	//reg := prometheus.NewPedanticRegistry()
 
-	// Construct cluster managers. In real code, we would assign them to
-	// variables to then do something with them.
-	NewClusterManager("vGPU", reg, containerLister)
-	//NewClusterManager("ca", reg)
+	// 创建新的 Spec 对象用于存储和跟踪 vGPU 利用率
+	spec := v1.NewSpec()
+
+	// 构造 ClusterManager 并传入 Spec 对象
+	cm := NewClusterManager("vGPU", reg, containerLister)
+	cm.Spec = spec
 
 	// Uncomment to add the standard process and Go metrics to the custom registry.
 	//reg.MustRegister(

@@ -129,6 +129,22 @@ func (s Spec) DeviceSmUtil(idx int) uint64 {
 	return v
 }
 
+func (s Spec) DeviceDecUtil(idx int) uint64 {
+	v := uint64(0)
+	for _, p := range s.sr.procs {
+		v += p.deviceUtil[idx].decUtil
+	}
+	return v
+}
+
+func (s Spec) DeviceEncUtil(idx int) uint64 {
+	v := uint64(0)
+	for _, p := range s.sr.procs {
+		v += p.deviceUtil[idx].encUtil
+	}
+	return v
+}
+
 func (s Spec) SetDeviceSmLimit(l uint64) {
 	idx := uint64(0)
 	for idx < s.sr.num {

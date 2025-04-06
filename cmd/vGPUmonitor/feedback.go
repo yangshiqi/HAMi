@@ -17,13 +17,18 @@ limitations under the License.
 package main
 
 import (
+	"context"
+	"fmt"
 	"os"
 	"sort"
 	"strings"
 
 	"github.com/Project-HAMi/HAMi/pkg/monitor/nvidia"
+	v1 "github.com/Project-HAMi/HAMi/pkg/monitor/nvidia/v1"
 
 	"github.com/NVIDIA/go-nvml/pkg/nvml"
+	////v1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2"
 )
 
@@ -205,6 +210,77 @@ func Observe(lister *nvidia.ContainerLister) {
 	utSwitchOn := map[string]UtilizationPerDevice{}
 	containers := lister.ListContainers()
 
+	// 新增：清理不活跃的进程和Pod数据
+	for _, c := range containers {
+		// 如果容器包含Spec指针，清理不活跃的进程和Pod
+		if spec, ok := c.Info.(*v1.Spec); ok {
+			spec.CleanupInactiveProcesses()
+			spec.CleanupInactivePods()
+		}
+	}
+
+	// 首先收集每个容器的GPU利用率信息，并关联到对应的Pod
+	for _, c := range containers {
+		if c.PodUID == "" {
+			continue
+		}
+
+		// 获取Pod信息
+		pods, err := lister.Clientset().CoreV1().Pods("").List(context.Background(), metav1.ListOptions{
+			FieldSelector: fmt.Sprintf("metadata.uid=%s", c.PodUID),
+		})
+		if err != nil || len(pods.Items) == 0 {
+			klog.V(4).Infof("Failed to find Pod with UID %s: %v", c.PodUID, err)
+			continue
+		}
+		pod := pods.Items[0]
+
+		// 针对每个vGPU设备，收集并更新利用率信息
+		for i := 0; i < c.Info.DeviceNum(); i++ {
+			if !c.Info.IsValidUUID(i) {
+				continue
+			}
+
+			uuid := c.Info.DeviceUUID(i)
+			if uuid == "" {
+				continue
+			}
+
+			// 获取设备利用率
+			smUtil := c.Info.DeviceSmUtil(i)
+			decUtil := c.Info.DeviceDecUtil(i)
+			encUtil := c.Info.DeviceEncUtil(i)
+
+			// 将数据转换为deviceUtilization格式
+			if spec, ok := c.Info.(*v1.Spec); ok {
+				// 创建DeviceUtilization结构体
+				util := v1.DeviceUtilization{
+					SmUtil:  smUtil,
+					DecUtil: decUtil,
+					EncUtil: encUtil,
+				}
+
+				// 更新Pod的vGPU利用率
+				err := spec.UpdatePodGPUUtilization(
+					c.PodUID,
+					pod.Namespace,
+					pod.Name,
+					i,
+					uuid,
+					util,
+				)
+				if err != nil {
+					klog.Errorf("Failed to update Pod GPU utilization for Pod %s/%s, device %d: %v",
+						pod.Namespace, pod.Name, i, err)
+				} else {
+					klog.V(5).Infof("Updated vGPU utilization for Pod %s/%s, device %d: SM=%d%%, Dec=%d%%, Enc=%d%%",
+						pod.Namespace, pod.Name, i, smUtil, decUtil, encUtil)
+				}
+			}
+		}
+	}
+
+	// 原有的观察逻辑保持不变
 	for _, c := range containers {
 		recentKernel := c.Info.GetRecentKernel()
 		if recentKernel > 0 {

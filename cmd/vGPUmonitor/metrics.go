@@ -25,6 +25,7 @@ import (
 	"github.com/Project-HAMi/HAMi/pkg/util"
 
 	"github.com/NVIDIA/go-nvml/pkg/nvml"
+	v1 "github.com/Project-HAMi/HAMi/pkg/monitor/nvidia/v1"
 	"github.com/prometheus/client_golang/prometheus"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -49,6 +50,7 @@ type ClusterManager struct {
 	// Contains many more fields not listed in this example.
 	PodLister       listerscorev1.PodLister
 	containerLister *nvidia.ContainerLister
+	Spec            *v1.Spec
 }
 
 // ReallyExpensiveAssessmentOfTheSystemState is a mock for the data gathering a
@@ -100,20 +102,42 @@ var (
 		"vGPU device limit",
 		[]string{"podnamespace", "podname", "ctrname", "vdeviceid", "deviceuuid"}, nil,
 	)
+
 	ctrDeviceMemorydesc = prometheus.NewDesc(
 		"Device_memory_desc_of_container",
 		"Container device meory description",
 		[]string{"podnamespace", "podname", "ctrname", "vdeviceid", "deviceuuid", "context", "module", "data", "offset"}, nil,
 	)
+
 	ctrDeviceUtilizationdesc = prometheus.NewDesc(
 		"Device_utilization_desc_of_container",
 		"Container device utilization description",
 		[]string{"podnamespace", "podname", "ctrname", "vdeviceid", "deviceuuid"}, nil,
 	)
+
 	ctrDeviceLastKernelDesc = prometheus.NewDesc(
 		"Device_last_kernel_of_container",
 		"Container device last kernel description",
 		[]string{"podnamespace", "podname", "ctrname", "vdeviceid", "deviceuuid"}, nil,
+	)
+
+	// 新增的Pod vGPU利用率指标
+	podGPUSmUtilizationDesc = prometheus.NewDesc(
+		"pod_vgpu_sm_utilization",
+		"Pod vGPU SM (Streaming Multiprocessor) utilization",
+		[]string{"podnamespace", "podname", "poduid", "vdeviceid", "deviceuuid"}, nil,
+	)
+
+	podGPUDecUtilizationDesc = prometheus.NewDesc(
+		"pod_vgpu_dec_utilization",
+		"Pod vGPU decoder utilization",
+		[]string{"podnamespace", "podname", "poduid", "vdeviceid", "deviceuuid"}, nil,
+	)
+
+	podGPUEncUtilizationDesc = prometheus.NewDesc(
+		"pod_vgpu_enc_utilization",
+		"Pod vGPU encoder utilization",
+		[]string{"podnamespace", "podname", "poduid", "vdeviceid", "deviceuuid"}, nil,
 	)
 )
 
@@ -125,6 +149,13 @@ func (cc ClusterManagerCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- ctrvGPUdesc
 	ch <- ctrvGPUlimitdesc
 	ch <- hostGPUUtilizationdesc
+	ch <- ctrDeviceMemorydesc
+	ch <- ctrDeviceUtilizationdesc
+	ch <- ctrDeviceLastKernelDesc
+	// 注册新增的Pod vGPU利用率指标
+	ch <- podGPUSmUtilizationDesc
+	ch <- podGPUDecUtilizationDesc
+	ch <- podGPUEncUtilizationDesc
 	//prometheus.DescribeByCollect(cc, ch)
 }
 
@@ -330,6 +361,72 @@ func (cc ClusterManagerCollector) collectPodAndContainerInfo(ch chan<- prometheu
 					}
 					break // Exit the inner loop after finding the matching container
 				}
+			}
+		}
+
+		// 收集 vGPU 指标
+		podStats, err := cc.ClusterManager.Spec.GetPodGPUUtilization(string(pod.UID))
+		if err != nil {
+			klog.V(5).Infof("No GPU stats found for pod %s/%s: %v", pod.Namespace, pod.Name, err)
+			continue
+		}
+
+		for vgpuIndex, vgpuStats := range podStats.VGPUs {
+			// 使用新的Pod级别vGPU利用率指标
+			labels := []string{
+				pod.Namespace,
+				pod.Name,
+				string(pod.UID),
+				fmt.Sprint(vgpuIndex),
+				vgpuStats.UUID,
+			}
+
+			// SM (Streaming Multiprocessor) 利用率
+			if err := sendMetric(ch, podGPUSmUtilizationDesc, prometheus.GaugeValue,
+				float64(vgpuStats.Utilization.SmUtil), labels...); err != nil {
+				klog.Errorf("Failed to send SM utilization metric for vGPU %d in Pod %s/%s: %v",
+					vgpuIndex, pod.Namespace, pod.Name, err)
+			}
+
+			// 解码器利用率
+			if err := sendMetric(ch, podGPUDecUtilizationDesc, prometheus.GaugeValue,
+				float64(vgpuStats.Utilization.DecUtil), labels...); err != nil {
+				klog.Errorf("Failed to send decoder utilization metric for vGPU %d in Pod %s/%s: %v",
+					vgpuIndex, pod.Namespace, pod.Name, err)
+			}
+
+			// 编码器利用率
+			if err := sendMetric(ch, podGPUEncUtilizationDesc, prometheus.GaugeValue,
+				float64(vgpuStats.Utilization.EncUtil), labels...); err != nil {
+				klog.Errorf("Failed to send encoder utilization metric for vGPU %d in Pod %s/%s: %v",
+					vgpuIndex, pod.Namespace, pod.Name, err)
+			}
+
+			// 为兼容性保留现有的容器级别vGPU指标收集
+			for _, ctr := range pod.Spec.Containers {
+				// 收集内存使用情况
+				ch <- prometheus.MustNewConstMetric(
+					ctrvGPUdesc,
+					prometheus.GaugeValue,
+					float64(vgpuStats.Utilization.DecUtil), // 使用 DecUtil 作为内存使用量的代理指标
+					pod.Namespace,
+					pod.Name,
+					ctr.Name,
+					fmt.Sprint(vgpuIndex),
+					vgpuStats.UUID,
+				)
+
+				// 收集利用率信息
+				ch <- prometheus.MustNewConstMetric(
+					ctrDeviceUtilizationdesc,
+					prometheus.GaugeValue,
+					float64(vgpuStats.Utilization.SmUtil),
+					pod.Namespace,
+					pod.Name,
+					ctr.Name,
+					fmt.Sprint(vgpuIndex),
+					vgpuStats.UUID,
+				)
 			}
 		}
 	}
