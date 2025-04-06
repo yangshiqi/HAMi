@@ -8,6 +8,8 @@
 
 ***可限制分配的算力核组比例***: 你现在可以用算力比例（例如60%）来分配GPU，本组件会确保任务使用的显存不会超过分配数值，注意只有M100型号的M150支持可配算力比例
 
+***设备 UUID 选择***: 你可以通过注解指定使用或排除特定的 GPU 设备
+
 ***方便易用***:  部署本组件后，只需要部署厂家提供的gpu-manager即可使用
 
 
@@ -29,6 +31,29 @@
 ```
 helm install hami hami-charts/hami --set scheduler.kubeScheduler.imageTag={your kubernetes version} --set iluvatarResourceMem=iluvatar.ai/vcuda-memory --set iluvatarResourceCore=iluvatar.ai/vcuda-core -n kube-system
 ```
+
+> **说明:** 默认资源名称如下：
+> - `iluvatar.ai/vgpu` 用于 GPU 数量
+> - `iluvatar.ai/vcuda-memory` 用于内存分配
+> - `iluvatar.ai/vcuda-core` 用于核心分配
+>
+> 你可以通过上述参数自定义这些名称。
+
+## 设备粒度切分
+
+HAMi 将每个天数智芯 GPU 划分为 100 个单元进行资源分配。当你请求一部分 GPU 时，实际上是在请求这些单元中的一定数量。
+
+### 内存分配
+
+- 每个 `iluvatar.ai/vcuda-memory` 单位代表 256MB 的设备内存
+- 如果不指定内存请求，系统将默认使用 100% 的可用内存
+- 内存分配通过硬限制强制执行，确保任务不会超过其分配的内存
+
+### 核心分配
+
+- 每个 `iluvatar.ai/vcuda-core` 单位代表 1% 的可用计算核心
+- 核心分配通过硬限制强制执行，确保任务不会超过其分配的核心
+- 当请求多个 GPU 时，系统会根据请求的 GPU 数量自动设置核心资源
 
 ## 运行GPU任务
 
@@ -68,6 +93,64 @@ spec:
 
 > **注意2:** *查看更多的[用例](../examples/iluvatar/).*
 
+## 设备 UUID 选择
+
+你可以通过 Pod 注解来指定要使用或排除特定的 GPU 设备：
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: poddemo
+  annotations:
+    # 使用特定的 GPU 设备（逗号分隔的列表）
+    iluvatar.ai/use-gpuuuid: "node1-iluvatar-0,node1-iluvatar-1"
+    # 或者排除特定的 GPU 设备（逗号分隔的列表）
+    iluvatar.ai/nouse-gpuuuid: "node1-iluvatar-2,node1-iluvatar-3"
+spec:
+  # ... 其余 Pod 配置
+```
+
+> **说明:** 设备 ID 格式为 `{节点名称}-iluvatar-{索引}`。你可以在节点状态中找到可用的设备 ID。
+
+### 查找设备 UUID
+
+你可以使用以下命令查找节点上的天数智芯 GPU 设备 UUID：
+
+```bash
+kubectl describe node <节点名称> | grep -A 10 "Allocated resources"
+```
+
+或者通过检查节点注解：
+
+```bash
+kubectl get node <节点名称> -o yaml | grep -A 10 "annotations:"
+```
+
+在节点注解中查找包含设备信息的注解。
+
+## 设备健康检查
+
+HAMi 支持对天数智芯 GPU 设备进行健康检查，确保只有健康的设备被分配给 Pod。健康检查包括：
+
+- 设备状态验证
+- 资源可用性验证
+- 驱动状态验证
+
+## 资源使用统计
+
+HAMi 支持对天数智芯 GPU 设备的资源使用情况进行统计，包括：
+
+- 设备内存使用情况
+- 计算核心使用情况
+- 设备利用率
+
+这些统计信息可以用于资源调度决策和性能优化。
+
+## 节点锁定机制
+
+HAMi 实现了节点锁定机制，确保设备资源不会被多个 Pod 同时使用。当 Pod 请求天数智芯 GPU 资源时，系统会锁定相应的节点，防止其他 Pod 使用相同的设备资源。
+
 ## 注意事项
 
 1. 你需要在容器中进行如下的设置才能正常的使用共享功能
@@ -79,4 +162,14 @@ spec:
       source /root/.bashrc
 ```
 
-2. 共享模式只对申请一张GPU的容器生效（iluvatar.ai/vgpu=1）
+2. 共享模式只对申请一张GPU的容器生效（iluvatar.ai/vgpu=1）。当请求多个 GPU 时，系统会根据请求的 GPU 数量自动设置核心资源。
+
+3. 系统将每个 GPU 划分为 100 个单元进行资源分配。当你请求一部分 GPU 时，实际上是在请求这些单元中的一定数量。
+
+4. 对于内存分配，如果不指定内存请求，系统将默认使用 100% 的可用内存。
+
+5. 系统同时支持 GPU 资源的请求和限制。如果未指定限制，系统将使用请求值作为限制。
+
+6. `iluvatar.ai/vcuda-memory` 资源仅在 `iluvatar.ai/vgpu=1` 时有效。
+
+7. 多设备请求（`iluvatar.ai/vgpu > 1`）不支持 vGPU 模式。

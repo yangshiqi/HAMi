@@ -8,6 +8,8 @@
 
 ***Device Core Control***: GPUs can be allocated with limited compute cores on certain type(i.e m100) and have made it that it does not exceed the boundary.
 
+***Device UUID Selection***: You can specify which GPU devices to use or exclude using annotations.
+
 ***Very Easy to use***: You don't need to modify your task yaml to use our scheduler. All your GPU jobs will be automatically supported after installation.
 
 ## Prerequisites
@@ -28,6 +30,29 @@
 ```
 helm install hami hami-charts/hami --set scheduler.kubeScheduler.imageTag={your kubernetes version} --set iluvatarResourceMem=iluvatar.ai/vcuda-memory --set iluvatarResourceCore=iluvatar.ai/vcuda-core -n kube-system
 ```
+
+> **NOTE:** The default resource names are:
+> - `iluvatar.ai/vgpu` for GPU count
+> - `iluvatar.ai/vcuda-memory` for memory allocation
+> - `iluvatar.ai/vcuda-core` for core allocation
+>
+> You can customize these names using the parameters above.
+
+## Device Granularity
+
+HAMi divides each Iluvatar GPU into 100 units for resource allocation. When you request a portion of a GPU, you're actually requesting a certain number of these units.
+
+### Memory Allocation
+
+- Each unit of `iluvatar.ai/vcuda-memory` represents 256MB of device memory
+- If you don't specify a memory request, the system will default to using 100% of the available memory
+- Memory allocation is enforced with hard limits to ensure tasks don't exceed their allocated memory
+
+### Core Allocation
+
+- Each unit of `iluvatar.ai/vcuda-core` represents 1% of the available compute cores
+- Core allocation is enforced with hard limits to ensure tasks don't exceed their allocated cores
+- When requesting multiple GPUs, the system will automatically set the core resources based on the number of GPUs requested
 
 ## Running Iluvatar jobs
 
@@ -70,6 +95,64 @@ spec:
 
 > **NOTICE2:** *You can find more examples in [examples/iluvatar folder](../examples/iluvatar/)*
 
+## Device UUID Selection
+
+You can specify which GPU devices to use or exclude using annotations:
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: poddemo
+  annotations:
+    # Use specific GPU devices (comma-separated list)
+    iluvatar.ai/use-gpuuuid: "node1-iluvatar-0,node1-iluvatar-1"
+    # Or exclude specific GPU devices (comma-separated list)
+    iluvatar.ai/nouse-gpuuuid: "node1-iluvatar-2,node1-iluvatar-3"
+spec:
+  # ... rest of pod spec
+```
+
+> **NOTE:** The device ID format is `{node-name}-iluvatar-{index}`. You can find the available device IDs in the node status.
+
+### Finding Device UUIDs
+
+You can find the UUIDs of Iluvatar GPUs on a node using the following command:
+
+```bash
+kubectl describe node <node-name> | grep -A 10 "Allocated resources"
+```
+
+Or by examining the node annotations:
+
+```bash
+kubectl get node <node-name> -o yaml | grep -A 10 "annotations:"
+```
+
+Look for annotations containing device information in the node status.
+
+## Device Health Check
+
+HAMi supports health checks for Iluvatar GPU devices to ensure that only healthy devices are allocated to Pods. The health check includes:
+
+- Device status verification
+- Resource availability verification
+- Driver status verification
+
+## Resource Usage Statistics
+
+HAMi supports statistics on Iluvatar GPU resource usage, including:
+
+- Device memory usage
+- Compute core usage
+- Device utilization
+
+These statistics can be used for resource scheduling decisions and performance optimization.
+
+## Node Locking Mechanism
+
+HAMi implements a node locking mechanism to ensure that device resources are not used by multiple Pods simultaneously. When a Pod requests Iluvatar GPU resources, the system locks the corresponding node to prevent other Pods from using the same device resources.
+
 ## Notes
 
 1. You need to set the following prestart command in order for the device-share to work properly
@@ -81,4 +164,14 @@ spec:
       source /root/.bashrc
 ```
 
-2. Virtualization takes effect only for containers that apply for one GPU(i.e iluvatar.ai/vgpu=1 )
+2. Virtualization takes effect only for containers that apply for one GPU(i.e iluvatar.ai/vgpu=1 ). When requesting multiple GPUs, the system will automatically set the core resources based on the number of GPUs requested.
+
+3. The system divides each GPU into 100 units for resource allocation. When you request a portion of a GPU, you're actually requesting a certain number of these units.
+
+4. For memory allocation, if you don't specify a memory request, the system will default to using 100% of the available memory.
+
+5. The system supports both requests and limits for GPU resources. If limits are not specified, the system will use the requests values as limits.
+
+6. The `iluvatar.ai/vcuda-memory` resource is only effective when `iluvatar.ai/vgpu=1`.
+
+7. Multi-device requests (`iluvatar.ai/vgpu > 1`) do not support vGPU mode.
