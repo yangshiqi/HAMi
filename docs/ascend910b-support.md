@@ -190,7 +190,7 @@ Refer to the aiCore ratio in each type configuration (chipName) and the aiCore u
 
 ### Ascend310P Device Granularity Partitioning
 
-Ascend310P devices (Atlas inference series products) support multiple granularity partitions, including 1/8, 1/4, and 1/2 of a card. Allocated memory automatically aligns to the nearest granularity above the requested amount.
+Ascend310P devices (Atlas inference series products) support multiple granularity partitions, including 1/7, 1/4, and 1/2 of a card. Allocated memory automatically aligns to the nearest granularity above the requested amount.
 
 ## Running NPU Workloads
 
@@ -211,30 +211,6 @@ spec:
           huawei.com/Ascend910: 1 # Request 1 vGPU
           huawei.com/Ascend910-memory: 2000 # Request 2000m device memory
 ```
-
-## Device Health Monitoring
-
-HAMi supports health monitoring for Ascend NPU devices, ensuring only healthy devices are allocated to Pods. Health monitoring includes:
-
-- Device status verification
-- Device resource availability verification
-- Device driver status verification
-
-## Resource Usage Statistics
-
-HAMi supports statistics collection for Ascend NPU device resource usage, including:
-
-- Device memory usage
-- AI core usage
-- AI CPU core usage
-- Device utilization
-
-These statistics can be used for resource scheduling decisions and performance optimization.
-
-## Node Locking Mechanism
-
-HAMi implements a node locking mechanism to prevent resource allocation conflicts. When a Pod requests Ascend NPU resources, the system locks the corresponding node to prevent other Pods from using the same device resources simultaneously.
-
 
 ## Device UUID Selection
 
@@ -288,16 +264,16 @@ In this example, the Pod will only run on Ascend910B devices with UUIDs `device-
 You can find the Ascend device UUIDs on a node using the following command:
 
 ```bash
-kubectl describe node <node-name> | grep -A 10 "Allocated resources"
+kubectl get pod <pod-name> -o yaml | grep -A 10 "hami.io/<card-type>-devices-allocated"
 ```
 
 Or by viewing the node annotations:
 
 ```bash
-kubectl get node <node-name> -o yaml | grep -A 10 "annotations:"
+kubectl get node <node-name> -o yaml | grep -A 10 "hami.io/node-register-<card-type>"
 ```
 
-In the node annotations, look for `hami.io/node-register-Ascend910B` or similar annotations, which contain the device UUID information.
+In the node annotations, look for `hami.io/node-register-<card-type>` or similar annotations, which contain the device UUID information.
 
 </details>
 
