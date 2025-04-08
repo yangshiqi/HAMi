@@ -118,38 +118,17 @@ spec:
 你可以使用以下命令查找节点上的天数智芯 GPU 设备 UUID：
 
 ```bash
-kubectl describe node <节点名称> | grep -A 10 "Allocated resources"
+kubectl get pod <pod-name> -o yaml | grep -A 10 "hami.io/<card-type>-devices-allocated"
 ```
 
 或者通过检查节点注解：
 
 ```bash
-kubectl get node <节点名称> -o yaml | grep -A 10 "annotations:"
+kubectl get node <node-name> -o yaml | grep -A 10 "hami.io/node-register-<card-type>"
 ```
 
 在节点注解中查找包含设备信息的注解。
 
-## 设备健康检查
-
-HAMi 支持对天数智芯 GPU 设备进行健康检查，确保只有健康的设备被分配给 Pod。健康检查包括：
-
-- 设备状态验证
-- 资源可用性验证
-- 驱动状态验证
-
-## 资源使用统计
-
-HAMi 支持对天数智芯 GPU 设备的资源使用情况进行统计，包括：
-
-- 设备内存使用情况
-- 计算核心使用情况
-- 设备利用率
-
-这些统计信息可以用于资源调度决策和性能优化。
-
-## 节点锁定机制
-
-HAMi 实现了节点锁定机制，确保设备资源不会被多个 Pod 同时使用。当 Pod 请求天数智芯 GPU 资源时，系统会锁定相应的节点，防止其他 Pod 使用相同的设备资源。
 
 ## 注意事项
 

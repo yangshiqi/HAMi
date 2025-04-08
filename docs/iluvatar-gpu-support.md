@@ -120,38 +120,16 @@ spec:
 You can find the UUIDs of Iluvatar GPUs on a node using the following command:
 
 ```bash
-kubectl describe node <node-name> | grep -A 10 "Allocated resources"
+kubectl get pod <pod-name> -o yaml | grep -A 10 "hami.io/<card-type>-devices-allocated"
 ```
 
 Or by examining the node annotations:
 
 ```bash
-kubectl get node <node-name> -o yaml | grep -A 10 "annotations:"
+kubectl get node <node-name> -o yaml | grep -A 10 "hami.io/node-register-<card-type>"
 ```
 
 Look for annotations containing device information in the node status.
-
-## Device Health Check
-
-HAMi supports health checks for Iluvatar GPU devices to ensure that only healthy devices are allocated to Pods. The health check includes:
-
-- Device status verification
-- Resource availability verification
-- Driver status verification
-
-## Resource Usage Statistics
-
-HAMi supports statistics on Iluvatar GPU resource usage, including:
-
-- Device memory usage
-- Compute core usage
-- Device utilization
-
-These statistics can be used for resource scheduling decisions and performance optimization.
-
-## Node Locking Mechanism
-
-HAMi implements a node locking mechanism to ensure that device resources are not used by multiple Pods simultaneously. When a Pod requests Iluvatar GPU resources, the system locks the corresponding node to prevent other Pods from using the same device resources.
 
 ## Notes
 
