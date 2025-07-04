@@ -218,6 +218,19 @@ func syncNodeDeviceInfo(s *Scheduler, node *corev1.Node, devVendor string, devic
 	}
 }
 
+func (s *Scheduler) waitForNodeAnnotationEvent(ticker *time.Ticker) bool {
+	select {
+	case <-s.nodeNotify:
+		klog.V(5).InfoS("Received node notification")
+	case <-ticker.C:
+		klog.InfoS("Ticker triggered")
+	case <-s.stopCh:
+		klog.InfoS("Received stop signal, exiting RegisterFromNodeAnnotations")
+		return false
+	}
+	return true
+}
+
 func (s *Scheduler) RegisterFromNodeAnnotations() {
 	klog.InfoS("Entering RegisterFromNodeAnnotations")
 	defer klog.InfoS("Exiting RegisterFromNodeAnnotations")
@@ -229,13 +242,7 @@ func (s *Scheduler) RegisterFromNodeAnnotations() {
 	defer ticker.Stop()
 	printedLog := map[string]bool{}
 	for {
-		select {
-		case <-s.nodeNotify:
-			klog.V(5).InfoS("Received node notification")
-		case <-ticker.C:
-			klog.InfoS("Ticker triggered")
-		case <-s.stopCh:
-			klog.InfoS("Received stop signal, exiting RegisterFromNodeAnnotations")
+		if !s.waitForNodeAnnotationEvent(ticker) {
 			return
 		}
 		rawNodes, err := s.nodeLister.List(labelSelector)

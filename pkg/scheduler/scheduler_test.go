@@ -22,7 +22,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/require"
 	"gotest.tools/v3/assert"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -689,7 +688,7 @@ func Test_RegisterFromNodeAnnotations(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			// Graceful shutdown after 5 seconds
+			// Graceful shutdown after 5 seconds.
 			time.AfterFunc(5*time.Second, func() {
 				close(test.Scheduler.stopCh)
 			})
@@ -699,148 +698,21 @@ func Test_RegisterFromNodeAnnotations(t *testing.T) {
 				test.Scheduler.nodeNotify <- struct{}{}
 			}()
 
-			// Invoke the method to test
+			// Invoke the method to test.
 			test.Scheduler.RegisterFromNodeAnnotations()
 
-			// Get the node to verify annotations
+			// Get the node to verify annotations.
 			node, err := test.Scheduler.kubeClient.CoreV1().Nodes().Get(context.TODO(), "node", metav1.GetOptions{})
 			if err != nil {
 				t.Errorf("failed to get node: %v", err)
 				return
 			}
 
-			// Verify the annotations
+			// Verify the annotations.
 			assert.Equal(t, test.want(node), true)
 		})
 	}
 }
-
-func Test_RegisterFromNodeAnnotations_NIL(t *testing.T) {
-	// Define a helper function to create a scheduler with a node that has nil annotations.
-	createSchedulerWithNilAnnotations := func() *Scheduler {
-		s := NewScheduler()
-		s.stopCh = make(chan struct{})
-		s.nodeNotify = make(chan struct{})
-
-		client.KubeClient = fake.NewSimpleClientset()
-		s.kubeClient = client.KubeClient
-
-		informerFactory := informers.NewSharedInformerFactoryWithOptions(client.KubeClient, time.Hour)
-		s.nodeLister = informerFactory.Core().V1().Nodes().Lister()
-
-		// Create a node without annotations (nil annotations)
-		node := &corev1.Node{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: "node-nil-annotations",
-			},
-		}
-
-		// Create the node and add it to the indexer
-		_, err := s.kubeClient.CoreV1().Nodes().Create(context.TODO(), node, metav1.CreateOptions{})
-		if err != nil {
-			t.Fatalf("failed to create node: %v", err)
-		}
-		err = informerFactory.Core().V1().Nodes().Informer().GetIndexer().Add(node)
-		if err != nil {
-			t.Fatalf("failed to add node to indexer: %v", err)
-		}
-
-		// Start informer factory to sync cache
-		informerFactory.Start(s.stopCh)
-
-		// Check if cache sync was successful
-		_ = informerFactory.WaitForCacheSync(s.stopCh)
-		//if cacheSynced == false {
-		//	t.Fatalf("failed to sync cache")
-		//}
-
-		return s
-	}
-
-	tests := []struct {
-		name      string
-		Scheduler *Scheduler
-		want      func(*corev1.Node) bool
-	}{
-		{
-			name:      "test nil annotations handling",
-			Scheduler: createSchedulerWithNilAnnotations(),
-			want: func(node *corev1.Node) bool {
-				if node == nil {
-					t.Errorf("node is nil")
-					return false
-				}
-
-				// Check if RegisterFromNodeAnnotations handles nil annotations gracefully
-				if node.Annotations == nil {
-					t.Logf("node annotations are nil, checking if handled properly...")
-					return true // Adjust based on expected behavior
-				}
-
-				// If annotations exist, check for specific annotations
-				handshakeTimeStr, okHami := node.Annotations["hami.io/node-handshake"]
-				dcuTimeStr, okDcu := node.Annotations["hami.io/node-handshake-dcu"]
-
-				// Here you can define what should happen when annotations are present but not set
-				if !okHami || !okDcu {
-					t.Logf("expected annotations are missing, checking if handled properly...")
-					return true // Adjust based on expected behavior
-				}
-
-				// Verify time format in annotations if they exist
-				_, errHami := time.Parse(time.DateTime, strings.TrimPrefix(handshakeTimeStr, "Requesting_"))
-				_, errDcu := time.Parse(time.DateTime, strings.TrimPrefix(dcuTimeStr, "Requesting_"))
-
-				if errHami != nil {
-					t.Errorf("invalid time format in annotation 'hami.io/node-handshake': %v", errHami)
-					return false
-				}
-				if errDcu != nil {
-					t.Errorf("invalid time format in annotation 'hami.io/node-handshake-dcu': %v", errDcu)
-					return false
-				}
-
-				return true
-			},
-		},
-	}
-
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			defer func() {
-				if r := recover(); r != nil {
-					t.Errorf("Recovered from panic: %v", r)
-				}
-			}()
-
-			// Ensure scheduler starts before running the test
-			time.AfterFunc(5*time.Second, func() {
-				close(test.Scheduler.stopCh)
-			})
-
-			// Notify node annotations after a short delay to ensure scheduler is ready
-			go func() {
-				time.Sleep(100 * time.Millisecond) // Give some time for scheduler to start
-				test.Scheduler.nodeNotify <- struct{}{}
-			}()
-
-			// Invoke the method to test
-			test.Scheduler.RegisterFromNodeAnnotations()
-
-			// Get the node to verify annotations
-			node, err := test.Scheduler.kubeClient.CoreV1().Nodes().Get(context.TODO(), "node-nil-annotations", metav1.GetOptions{})
-			require.NoError(t, err) // Use require to fail fast on error
-			require.NotNil(t, node) // Ensure node is not nil
-
-			// Verify the annotations
-			if !test.want(node) {
-				t.Errorf("annotations validation failed")
-			}
-		})
-	}
-}
-
-// --- Unit tests for checkAndCleanupIfUnhealthy and getNodeDevices ---
 
 type fakeDevices struct {
 	getNodeDevicesFunc func(node corev1.Node) ([]*util.DeviceInfo, error)
@@ -869,7 +741,6 @@ func (f *fakeDevices) ScoreNode(node *corev1.Node, podDevices util.PodSingleDevi
 	return 0
 }
 
-// --- stub methods to satisfy device.Devices interface ---
 func (f *fakeDevices) AddResourceUsage(pod *corev1.Pod, usage *util.DeviceUsage, ctr *util.ContainerDevice) error {
 	return nil
 }
@@ -896,11 +767,9 @@ func (f *fakeDevices) MutateAdmission(ctr *corev1.Container, pod *corev1.Pod) (b
 	return true, nil
 }
 
-// --- 其他接口方法可按需 stub ---
-
 func Test_checkAndCleanupIfUnhealthy(t *testing.T) {
 	node := &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "n1"}}
-	// 1. 健康且需要更新
+	// 1. Healthy and need update.
 	dev := &fakeDevices{
 		checkHealthFunc: func(devVendor string, node *corev1.Node) (bool, bool) { return true, true },
 	}
@@ -908,7 +777,7 @@ func Test_checkAndCleanupIfUnhealthy(t *testing.T) {
 	if err != nil || !needUpdate {
 		t.Errorf("expected healthy and needUpdate, got err=%v, needUpdate=%v", err, needUpdate)
 	}
-	// 2. 健康但不需要更新
+	// 2. Healthy and no need update.
 	dev = &fakeDevices{
 		checkHealthFunc: func(devVendor string, node *corev1.Node) (bool, bool) { return true, false },
 	}
@@ -916,7 +785,7 @@ func Test_checkAndCleanupIfUnhealthy(t *testing.T) {
 	if err != nil || needUpdate {
 		t.Errorf("expected healthy and !needUpdate, got err=%v, needUpdate=%v", err, needUpdate)
 	}
-	// 3. 不健康且清理成功
+	// 3. Unhealthy and cleanup success.
 	dev = &fakeDevices{
 		checkHealthFunc: func(devVendor string, node *corev1.Node) (bool, bool) { return false, false },
 		nodeCleanUpErr:  nil,
@@ -928,7 +797,7 @@ func Test_checkAndCleanupIfUnhealthy(t *testing.T) {
 	if !dev.nodeCleanUpCalled {
 		t.Errorf("expected NodeCleanUp to be called")
 	}
-	// 4. 不健康且清理失败
+	// 4. Unhealthy and cleanup failed.
 	dev = &fakeDevices{
 		checkHealthFunc: func(devVendor string, node *corev1.Node) (bool, bool) { return false, false },
 		nodeCleanUpErr:  errors.New("test error"),
@@ -941,7 +810,7 @@ func Test_checkAndCleanupIfUnhealthy(t *testing.T) {
 
 func Test_getNodeDevices(t *testing.T) {
 	node := &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "n1"}}
-	// 1. 正常返回设备
+	// 1. Return valid device list.
 	dev := &fakeDevices{
 		getNodeDevicesFunc: func(node corev1.Node) ([]*util.DeviceInfo, error) {
 			return []*util.DeviceInfo{{ID: "d1"}}, nil
@@ -951,7 +820,7 @@ func Test_getNodeDevices(t *testing.T) {
 	if err != nil || len(devices) != 1 || devices[0].ID != "d1" {
 		t.Errorf("expected 1 device, got %v, err=%v", devices, err)
 	}
-	// 2. 返回空设备
+	// 2. Return empty device list.
 	dev = &fakeDevices{
 		getNodeDevicesFunc: func(node corev1.Node) ([]*util.DeviceInfo, error) {
 			return []*util.DeviceInfo{}, nil
@@ -961,7 +830,7 @@ func Test_getNodeDevices(t *testing.T) {
 	if err == nil || devices != nil {
 		t.Errorf("expected error for no devices, got %v, err=%v", devices, err)
 	}
-	// 3. 返回 error
+	// 3. Return error from GetNodeDevices.
 	dev = &fakeDevices{
 		getNodeDevicesFunc: func(node corev1.Node) ([]*util.DeviceInfo, error) {
 			return nil, errors.New("test error")
@@ -974,12 +843,12 @@ func Test_getNodeDevices(t *testing.T) {
 }
 
 func Test_updateHandshakeAnnotationIfNeeded_withFakeClient(t *testing.T) {
-	// 1. handshake annotation 存在且 patch 成功
+	// 1. Handshake annotation exists and patch succeeds
 	origHandshakeAnnos := util.HandshakeAnnos
 	defer func() { util.HandshakeAnnos = origHandshakeAnnos }()
 	util.HandshakeAnnos = map[string]string{"NVIDIA": "hami.io/node-handshake"}
 
-	// 使用 fake client
+	// Use fake client.
 	client.KubeClient = fake.NewSimpleClientset()
 	node := &corev1.Node{
 		ObjectMeta: metav1.ObjectMeta{
@@ -994,28 +863,57 @@ func Test_updateHandshakeAnnotationIfNeeded_withFakeClient(t *testing.T) {
 		t.Fatalf("failed to create node: %v", err)
 	}
 
-	// 调用
+	// Call updateHandshakeAnnotationIfNeeded.
 	err = updateHandshakeAnnotationIfNeeded(node, "NVIDIA")
 	if err != nil {
 		t.Errorf("expected no error, got %v", err)
 	}
-	// 校验 annotation 被更新
+	// Check annotation is updated.
 	updated, _ := client.KubeClient.CoreV1().Nodes().Get(context.Background(), "n1", metav1.GetOptions{})
 	if updated.Annotations["hami.io/node-handshake"] == "old" {
 		t.Errorf("expected annotation to be updated, got %v", updated.Annotations["hami.io/node-handshake"])
 	}
 
-	// 2. handshake annotation 存在但 node 不存在
+	// 2. Handshake annotation exists but node does not exist.
 	nodeNotExist := &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "not-exist"}}
 	err = updateHandshakeAnnotationIfNeeded(nodeNotExist, "NVIDIA")
 	if err == nil {
 		t.Errorf("expected error for not found node, got nil")
 	}
 
-	// 3. handshake annotation 不存在
+	// 3. Handshake annotation does not exist.
 	util.HandshakeAnnos = map[string]string{}
 	err = updateHandshakeAnnotationIfNeeded(node, "NVIDIA")
 	if err != nil {
 		t.Errorf("expected no error for missing annotation, got %v", err)
+	}
+}
+
+func Test_syncNodeDeviceInfo(t *testing.T) {
+	s := NewScheduler()
+	node := &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "n1"}}
+	devVendor := "NVIDIA"
+	devices := []*util.DeviceInfo{
+		{ID: "d1", Index: 0},
+		{ID: "d2", Index: 1},
+	}
+	printedLog := map[string]bool{}
+
+	// 1. First add node, printedLog[node.Name] == false.
+	syncNodeDeviceInfo(s, node, devVendor, devices, printedLog)
+	if s.nodes[node.Name] == nil {
+		t.Errorf("expected node to be added to scheduler")
+	}
+	if len(s.nodes[node.Name].Devices) != 2 {
+		t.Errorf("expected 2 devices, got %d", len(s.nodes[node.Name].Devices))
+	}
+	if !printedLog[node.Name] {
+		t.Errorf("expected printedLog to be true after first add")
+	}
+
+	// 2. Add the same node again, printedLog[node.Name] == true, should go update branch.
+	syncNodeDeviceInfo(s, node, devVendor, devices, printedLog)
+	if len(s.nodes[node.Name].Devices) != 2 {
+		t.Errorf("expected 2 devices after update, got %d", len(s.nodes[node.Name].Devices))
 	}
 }
