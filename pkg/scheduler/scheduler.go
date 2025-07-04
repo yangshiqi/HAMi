@@ -143,6 +143,81 @@ func (s *Scheduler) Stop() {
 	close(s.stopCh)
 }
 
+// getNodeDevices tries to get devices of a node for a given device type.
+// Returns device list or error if not found.
+func getNodeDevices(devInstance device.Devices, node *corev1.Node, devVendor string) ([]*util.DeviceInfo, error) {
+	devices, err := devInstance.GetNodeDevices(*node)
+	if err != nil {
+		klog.V(6).InfoS("Failed to get node devices", "nodeName", node.Name, "deviceVendor", devVendor)
+		return nil, err
+	}
+	if len(devices) == 0 {
+		klog.V(6).InfoS("No devices found on node", "nodeName", node.Name, "deviceVendor", devVendor)
+		return nil, fmt.Errorf("no devices found")
+	}
+	return devices, nil
+}
+
+// checkAndCleanupIfUnhealthy checks device health and cleans up if unhealthy.
+// Returns (needUpdate, error).
+func checkAndCleanupIfUnhealthy(devInstance device.Devices, node *corev1.Node, devVendor string) (bool, error) {
+	health, needUpdate := devInstance.CheckHealth(devVendor, node)
+	klog.V(5).InfoS("Device health check", "nodeName", node.Name, "deviceVendor", devVendor, "health", health, "needUpdate", needUpdate)
+	if !health {
+		klog.Warning("Device is unhealthy, cleaning up node", "nodeName", node.Name, "deviceVendor", devVendor)
+		if err := devInstance.NodeCleanUp(node.Name); err != nil {
+			klog.ErrorS(err, "Node cleanup failed", "nodeName", node.Name, "deviceVendor", devVendor)
+			return false, err
+		}
+		return false, nil
+	}
+	if !needUpdate {
+		klog.V(5).InfoS("No update needed for device", "nodeName", node.Name, "deviceVendor", devVendor)
+	}
+	return needUpdate, nil
+}
+
+// updateHandshakeAnnotationIfNeeded updates handshake annotation if needed.
+func updateHandshakeAnnotationIfNeeded(node *corev1.Node, devVendor string) error {
+	annoKey, ok := util.HandshakeAnnos[devVendor]
+	if !ok {
+		return nil
+	}
+	tmppat := map[string]string{annoKey: "Requesting_" + time.Now().Format(time.DateTime)}
+	klog.InfoS("Updating handshake annotation", "nodeName", node.Name, "annotationKey", annoKey, "annotationValue", tmppat[annoKey])
+	n, err := util.GetNode(node.Name)
+	if err != nil {
+		klog.ErrorS(err, "Failed to get node", "nodeName", node.Name)
+		return err
+	}
+	if err := util.PatchNodeAnnotations(n, tmppat); err != nil {
+		klog.ErrorS(err, "Failed to patch node annotations", "nodeName", node.Name)
+		return err
+	}
+	return nil
+}
+
+// syncNodeDeviceInfo syncs device info to scheduler's node map and logs the update.
+func syncNodeDeviceInfo(s *Scheduler, node *corev1.Node, devVendor string, devices []*util.DeviceInfo, printedLog map[string]bool) {
+	nodeInfo := &util.NodeInfo{
+		ID:      node.Name,
+		Node:    node,
+		Devices: make([]util.DeviceInfo, 0, len(devices)),
+	}
+	for _, d := range devices {
+		nodeInfo.Devices = append(nodeInfo.Devices, *d)
+	}
+	s.addNode(node.Name, nodeInfo)
+	if s.nodes[node.Name] != nil && len(nodeInfo.Devices) > 0 {
+		if printedLog[node.Name] {
+			klog.V(5).InfoS("Node device updated", "nodeName", node.Name, "deviceVendor", devVendor, "nodeInfo", nodeInfo, "totalDevices", s.nodes[node.Name].Devices)
+		} else {
+			klog.InfoS("Node device added", "nodeName", node.Name, "deviceVendor", devVendor, "nodeInfo", nodeInfo, "totalDevices", s.nodes[node.Name].Devices)
+			printedLog[node.Name] = true
+		}
+	}
+}
+
 func (s *Scheduler) RegisterFromNodeAnnotations() {
 	klog.InfoS("Entering RegisterFromNodeAnnotations")
 	defer klog.InfoS("Exiting RegisterFromNodeAnnotations")
@@ -174,64 +249,19 @@ func (s *Scheduler) RegisterFromNodeAnnotations() {
 			nodeNames = append(nodeNames, val.Name)
 			klog.V(5).InfoS("Processing node", "nodeName", val.Name)
 
-			for devhandsk, devInstance := range device.GetDevices() {
-				klog.V(5).InfoS("Checking device health", "nodeName", val.Name, "deviceVendor", devhandsk)
-
-				nodedevices, err := devInstance.GetNodeDevices(*val)
+			for devVendor, devInstance := range device.GetDevices() {
+				devices, err := getNodeDevices(devInstance, val, devVendor)
 				if err != nil {
-					klog.V(5).InfoS("Failed to get node devices", "nodeName", val.Name, "deviceVendor", devhandsk)
 					continue
 				}
-
-				health, needUpdate := devInstance.CheckHealth(devhandsk, val)
-				klog.V(5).InfoS("Device health check result", "nodeName", val.Name, "deviceVendor", devhandsk, "health", health, "needUpdate", needUpdate)
-
-				if !health {
-					klog.Warning("Device is unhealthy, cleaning up node", "nodeName", val.Name, "deviceVendor", devhandsk)
-					err := devInstance.NodeCleanUp(val.Name)
-					if err != nil {
-						klog.ErrorS(err, "Node cleanup failed", "nodeName", val.Name, "deviceVendor", devhandsk)
-					}
-
-					s.rmNodeDevices(val.Name, devhandsk)
+				needUpdate, err := checkAndCleanupIfUnhealthy(devInstance, val, devVendor)
+				if err != nil || !needUpdate {
 					continue
 				}
-				if !needUpdate {
-					klog.V(5).InfoS("No update needed for device", "nodeName", val.Name, "deviceVendor", devhandsk)
+				if err := updateHandshakeAnnotationIfNeeded(val, devVendor); err != nil {
 					continue
 				}
-				_, ok := util.HandshakeAnnos[devhandsk]
-				if ok {
-					tmppat := make(map[string]string)
-					tmppat[util.HandshakeAnnos[devhandsk]] = "Requesting_" + time.Now().Format(time.DateTime)
-					klog.InfoS("New timestamp for annotation", "nodeName", val.Name, "annotationKey", util.HandshakeAnnos[devhandsk], "annotationValue", tmppat[util.HandshakeAnnos[devhandsk]])
-					n, err := util.GetNode(val.Name)
-					if err != nil {
-						klog.ErrorS(err, "Failed to get node", "nodeName", val.Name)
-						continue
-					}
-					klog.V(5).InfoS("Patching node annotations", "nodeName", val.Name, "annotations", tmppat)
-					if err := util.PatchNodeAnnotations(n, tmppat); err != nil {
-						klog.ErrorS(err, "Failed to patch node annotations", "nodeName", val.Name)
-					}
-				}
-				nodeInfo := &util.NodeInfo{}
-				nodeInfo.ID = val.Name
-				nodeInfo.Node = val
-				klog.V(5).InfoS("Fetching node devices", "nodeName", val.Name, "deviceVendor", devhandsk)
-				nodeInfo.Devices = make([]util.DeviceInfo, 0)
-				for _, deviceinfo := range nodedevices {
-					nodeInfo.Devices = append(nodeInfo.Devices, *deviceinfo)
-				}
-				s.addNode(val.Name, nodeInfo)
-				if s.nodes[val.Name] != nil && len(nodeInfo.Devices) > 0 {
-					if printedLog[val.Name] {
-						klog.V(5).InfoS("Node device updated", "nodeName", val.Name, "deviceVendor", devhandsk, "nodeInfo", nodeInfo, "totalDevices", s.nodes[val.Name].Devices)
-					} else {
-						klog.InfoS("Node device added", "nodeName", val.Name, "deviceVendor", devhandsk, "nodeInfo", nodeInfo, "totalDevices", s.nodes[val.Name].Devices)
-						printedLog[val.Name] = true
-					}
-				}
+				syncNodeDeviceInfo(s, val, devVendor, devices, printedLog)
 			}
 		}
 		_, _, err = s.getNodesUsage(&nodeNames, nil)

@@ -33,6 +33,8 @@ import (
 	"k8s.io/klog/v2"
 	extenderv1 "k8s.io/kube-scheduler/extender/v1"
 
+	"errors"
+
 	"github.com/Project-HAMi/HAMi/pkg/device"
 	"github.com/Project-HAMi/HAMi/pkg/device/nvidia"
 	"github.com/Project-HAMi/HAMi/pkg/scheduler/policy"
@@ -835,5 +837,185 @@ func Test_RegisterFromNodeAnnotations_NIL(t *testing.T) {
 				t.Errorf("annotations validation failed")
 			}
 		})
+	}
+}
+
+// --- Unit tests for checkAndCleanupIfUnhealthy and getNodeDevices ---
+
+type fakeDevices struct {
+	getNodeDevicesFunc func(node corev1.Node) ([]*util.DeviceInfo, error)
+	checkHealthFunc    func(devVendor string, node *corev1.Node) (bool, bool)
+	nodeCleanUpCalled  bool
+	nodeCleanUpErr     error
+}
+
+func (f *fakeDevices) GetNodeDevices(node corev1.Node) ([]*util.DeviceInfo, error) {
+	if f.getNodeDevicesFunc != nil {
+		return f.getNodeDevicesFunc(node)
+	}
+	return nil, nil
+}
+func (f *fakeDevices) CheckHealth(devVendor string, node *corev1.Node) (bool, bool) {
+	if f.checkHealthFunc != nil {
+		return f.checkHealthFunc(devVendor, node)
+	}
+	return true, true
+}
+func (f *fakeDevices) NodeCleanUp(nodeName string) error {
+	f.nodeCleanUpCalled = true
+	return f.nodeCleanUpErr
+}
+func (f *fakeDevices) ScoreNode(node *corev1.Node, podDevices util.PodSingleDevice, previous []*util.DeviceUsage, policy string) float32 {
+	return 0
+}
+
+// --- stub methods to satisfy device.Devices interface ---
+func (f *fakeDevices) AddResourceUsage(pod *corev1.Pod, usage *util.DeviceUsage, ctr *util.ContainerDevice) error {
+	return nil
+}
+func (f *fakeDevices) PatchAnnotations(pod *corev1.Pod, annotations *map[string]string, devices util.PodDevices) map[string]string {
+	return *annotations
+}
+func (f *fakeDevices) LockNode(node *corev1.Node, pod *corev1.Pod) error        { return nil }
+func (f *fakeDevices) ReleaseNodeLock(node *corev1.Node, pod *corev1.Pod) error { return nil }
+func (f *fakeDevices) PatchPodAnnotations(pod *corev1.Pod, annotations map[string]string) error {
+	return nil
+}
+func (f *fakeDevices) PatchNodeAnnotations(node *corev1.Node, annotations map[string]string) error {
+	return nil
+}
+func (f *fakeDevices) Vendor() string     { return "FAKE" }
+func (f *fakeDevices) CommonWord() string { return "FAKE" }
+func (f *fakeDevices) Fit(devices []*util.DeviceUsage, request util.ContainerDeviceRequest, annos map[string]string, pod *corev1.Pod, allocated *util.PodDevices) (bool, map[string]util.ContainerDevices, string) {
+	return true, nil, ""
+}
+func (f *fakeDevices) GenerateResourceRequests(ctr *corev1.Container) util.ContainerDeviceRequest {
+	return util.ContainerDeviceRequest{}
+}
+func (f *fakeDevices) MutateAdmission(ctr *corev1.Container, pod *corev1.Pod) (bool, error) {
+	return true, nil
+}
+
+// --- 其他接口方法可按需 stub ---
+
+func Test_checkAndCleanupIfUnhealthy(t *testing.T) {
+	node := &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "n1"}}
+	// 1. 健康且需要更新
+	dev := &fakeDevices{
+		checkHealthFunc: func(devVendor string, node *corev1.Node) (bool, bool) { return true, true },
+	}
+	needUpdate, err := checkAndCleanupIfUnhealthy(dev, node, "NVIDIA")
+	if err != nil || !needUpdate {
+		t.Errorf("expected healthy and needUpdate, got err=%v, needUpdate=%v", err, needUpdate)
+	}
+	// 2. 健康但不需要更新
+	dev = &fakeDevices{
+		checkHealthFunc: func(devVendor string, node *corev1.Node) (bool, bool) { return true, false },
+	}
+	needUpdate, err = checkAndCleanupIfUnhealthy(dev, node, "NVIDIA")
+	if err != nil || needUpdate {
+		t.Errorf("expected healthy and !needUpdate, got err=%v, needUpdate=%v", err, needUpdate)
+	}
+	// 3. 不健康且清理成功
+	dev = &fakeDevices{
+		checkHealthFunc: func(devVendor string, node *corev1.Node) (bool, bool) { return false, false },
+		nodeCleanUpErr:  nil,
+	}
+	needUpdate, err = checkAndCleanupIfUnhealthy(dev, node, "NVIDIA")
+	if err != nil || needUpdate {
+		t.Errorf("expected unhealthy and cleanup success, got err=%v, needUpdate=%v", err, needUpdate)
+	}
+	if !dev.nodeCleanUpCalled {
+		t.Errorf("expected NodeCleanUp to be called")
+	}
+	// 4. 不健康且清理失败
+	dev = &fakeDevices{
+		checkHealthFunc: func(devVendor string, node *corev1.Node) (bool, bool) { return false, false },
+		nodeCleanUpErr:  errors.New("test error"),
+	}
+	needUpdate, err = checkAndCleanupIfUnhealthy(dev, node, "NVIDIA")
+	if err == nil || needUpdate {
+		t.Errorf("expected unhealthy and cleanup error, got err=%v, needUpdate=%v", err, needUpdate)
+	}
+}
+
+func Test_getNodeDevices(t *testing.T) {
+	node := &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "n1"}}
+	// 1. 正常返回设备
+	dev := &fakeDevices{
+		getNodeDevicesFunc: func(node corev1.Node) ([]*util.DeviceInfo, error) {
+			return []*util.DeviceInfo{{ID: "d1"}}, nil
+		},
+	}
+	devices, err := getNodeDevices(dev, node, "NVIDIA")
+	if err != nil || len(devices) != 1 || devices[0].ID != "d1" {
+		t.Errorf("expected 1 device, got %v, err=%v", devices, err)
+	}
+	// 2. 返回空设备
+	dev = &fakeDevices{
+		getNodeDevicesFunc: func(node corev1.Node) ([]*util.DeviceInfo, error) {
+			return []*util.DeviceInfo{}, nil
+		},
+	}
+	devices, err = getNodeDevices(dev, node, "NVIDIA")
+	if err == nil || devices != nil {
+		t.Errorf("expected error for no devices, got %v, err=%v", devices, err)
+	}
+	// 3. 返回 error
+	dev = &fakeDevices{
+		getNodeDevicesFunc: func(node corev1.Node) ([]*util.DeviceInfo, error) {
+			return nil, errors.New("test error")
+		},
+	}
+	devices, err = getNodeDevices(dev, node, "NVIDIA")
+	if err == nil || devices != nil {
+		t.Errorf("expected error for device error, got %v, err=%v", devices, err)
+	}
+}
+
+func Test_updateHandshakeAnnotationIfNeeded_withFakeClient(t *testing.T) {
+	// 1. handshake annotation 存在且 patch 成功
+	origHandshakeAnnos := util.HandshakeAnnos
+	defer func() { util.HandshakeAnnos = origHandshakeAnnos }()
+	util.HandshakeAnnos = map[string]string{"NVIDIA": "hami.io/node-handshake"}
+
+	// 使用 fake client
+	client.KubeClient = fake.NewSimpleClientset()
+	node := &corev1.Node{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "n1",
+			Annotations: map[string]string{
+				"hami.io/node-handshake": "old",
+			},
+		},
+	}
+	_, err := client.KubeClient.CoreV1().Nodes().Create(context.Background(), node, metav1.CreateOptions{})
+	if err != nil {
+		t.Fatalf("failed to create node: %v", err)
+	}
+
+	// 调用
+	err = updateHandshakeAnnotationIfNeeded(node, "NVIDIA")
+	if err != nil {
+		t.Errorf("expected no error, got %v", err)
+	}
+	// 校验 annotation 被更新
+	updated, _ := client.KubeClient.CoreV1().Nodes().Get(context.Background(), "n1", metav1.GetOptions{})
+	if updated.Annotations["hami.io/node-handshake"] == "old" {
+		t.Errorf("expected annotation to be updated, got %v", updated.Annotations["hami.io/node-handshake"])
+	}
+
+	// 2. handshake annotation 存在但 node 不存在
+	nodeNotExist := &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "not-exist"}}
+	err = updateHandshakeAnnotationIfNeeded(nodeNotExist, "NVIDIA")
+	if err == nil {
+		t.Errorf("expected error for not found node, got nil")
+	}
+
+	// 3. handshake annotation 不存在
+	util.HandshakeAnnos = map[string]string{}
+	err = updateHandshakeAnnotationIfNeeded(node, "NVIDIA")
+	if err != nil {
+		t.Errorf("expected no error for missing annotation, got %v", err)
 	}
 }
