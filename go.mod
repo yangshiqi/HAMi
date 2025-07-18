@@ -1,6 +1,6 @@
 module github.com/Project-HAMi/HAMi
 
-go 1.22.2
+go 1.23.0
 
 require (
 	github.com/NVIDIA/go-gpuallocator v0.3.2
@@ -75,7 +75,7 @@ require (
 	github.com/syndtr/gocapability v0.0.0-20200815063812-42c35b437635 // indirect
 	github.com/xrash/smetrics v0.0.0-20201216005158-039620a65673 // indirect
 	golang.org/x/mod v0.19.0 // indirect
-	golang.org/x/oauth2 v0.17.0 // indirect
+	golang.org/x/oauth2 v0.27.0 // indirect
 	golang.org/x/sys v0.30.0 // indirect
 	golang.org/x/text v0.22.0 // indirect
 	golang.org/x/time v0.5.0 // indirect
